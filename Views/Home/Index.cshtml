@@ -14,11 +14,11 @@
         </div>
 
         <div class="temp-update">
-            <i class="fa-solid fa-gear"></i>
             <div>
                 <small>Cập nhật lúc:</small>
                 <strong id="updateTime">--</strong>
             </div>
+            <i class="fa-solid fa-expand" id="fullscreenBtn"></i>
             <b></b>
         </div>
     </section>
@@ -591,6 +591,23 @@
             }]
         });
     }
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+    fullscreenBtn.addEventListener('click', () => {
+        const elem = document.documentElement;
+
+        if (!document.fullscreenElement) {
+            elem.requestFullscreen().then(() => {
+                fullscreenBtn.classList.replace('fa-expand', 'fa-compress');
+            }).catch(err => {
+                console.error(`Không thể bật full screen: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen().then(() => {
+                fullscreenBtn.classList.replace('fa-compress', 'fa-expand');
+            });
+        }
+    });
 
     document.addEventListener("DOMContentLoaded", function () {
         loadRealtimeData();
