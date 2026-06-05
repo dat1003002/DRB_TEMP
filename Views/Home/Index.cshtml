@@ -1,0 +1,606 @@
+﻿@{
+    ViewData["Title"] = "Hệ thống kiểm tra nhiệt độ";
+}
+
+<div class="temp-page">
+    <section class="temp-hero">
+        <div class="temp-logo">
+            <img src="/images/logodrb.png" alt="DRB Vietnam" />
+        </div>
+
+        <div class="temp-title">
+            <h1>HỆ THỐNG KIỂM TRA NHIỆT ĐỘ & ĐỘ ẨM</h1>
+            <span></span>
+        </div>
+
+        <div class="temp-update">
+            <i class="fa-solid fa-gear"></i>
+            <div>
+                <small>Cập nhật lúc:</small>
+                <strong id="updateTime">--</strong>
+            </div>
+            <b></b>
+        </div>
+    </section>
+
+    <section class="temp-content-grid">
+        <article class="summary-combo current-box current-main" id="currentMetric">
+            <div class="summary-top">
+                <h3><i class="fa-regular fa-clock"></i> NHIỆT ĐỘ HIỆN TẠI</h3>
+            </div>
+
+            <div class="current-vertical">
+                <div class="current-item temperature">
+                    <div class="metric-icon">
+                        <p>NHIỆT ĐỘ</p>
+                        <i class="fa-solid fa-temperature-three-quarters"></i>
+                    </div>
+
+                    <div class="current-info">
+                        <strong><span id="currentTemp">--</span><small>°C</small></strong>
+                    </div>
+                </div>
+
+                <div class="current-line"></div>
+
+                <div class="current-item humidity">
+                    <div class="metric-icon">
+                        <p>ĐỘ ẨM</p>
+                        <i class="fa-solid fa-droplet"></i>
+                    </div>
+
+                    <div class="current-info">
+                        <strong><span id="currentHum">--</span><small>%</small></strong>
+                    </div>
+                </div>
+            </div>
+        </article>
+
+        <div class="right-panels">
+            <article class="summary-combo today-box" id="todayMetric">
+                <div class="summary-top">
+                    <h3>
+                        <i class="fa-regular fa-calendar-days"></i>
+                        NHIỆT ĐỘ HÔM NAY
+                    </h3>
+
+                    <div class="summary-time">
+                        <i class="fa-regular fa-clock"></i>
+                        <span>
+                            Cập nhật lúc:
+                            <b id="todayUpdateTime">--</b>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="summary-row">
+                    <div class="metric-item temperature">
+                        <div class="metric-icon">
+                            <i class="fa-solid fa-temperature-three-quarters"></i>
+                        </div>
+
+                        <div>
+                            <p>NHIỆT ĐỘ</p>
+                            <strong><span id="todayTemp">--</span>°C</strong>
+                        </div>
+                    </div>
+
+                    <div class="metric-divider"></div>
+
+                    <div class="metric-item humidity">
+                        <div class="metric-icon">
+                            <i class="fa-solid fa-droplet"></i>
+                        </div>
+
+                        <div>
+                            <p>ĐỘ ẨM</p>
+                            <strong><span id="todayHum">--</span>%</strong>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="dash-panel day-panel">
+                <div class="panel-head simple">
+                    <h2>
+                        <i class="fa-solid fa-temperature-three-quarters"></i>
+                        KẾT QUẢ NHIỆT ĐỘ 7 NGÀY QUA
+                    </h2>
+                </div>
+
+                <div class="day-list" id="tempDays"></div>
+            </article>
+
+            <article class="dash-panel chart-panel">
+                <div class="panel-head">
+                    <h2>
+                        <i class="fa-solid fa-chart-line"></i>
+                        KẾT QUẢ NHIỆT ĐỘ 7 NGÀY QUA
+                    </h2>
+
+                    <button type="button">
+                        <i class="fa-regular fa-calendar-days"></i>
+                        7 ngày qua
+                    </button>
+                </div>
+
+                <div class="chart-box">
+                    <canvas id="tempChart"></canvas>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="dash-panel month-panel">
+        <div class="month-head">
+            <h2>
+                <i class="fa-regular fa-calendar-days"></i>
+                KẾT QUẢ NHIỆT ĐỘ TRONG THÁNG
+            </h2>
+
+            <div class="month-actions">
+                <button type="button">‹</button>
+                <span id="currentMonthLabel">
+                    <i class="fa-regular fa-calendar-days"></i> --
+                </span>
+                <button type="button">›</button>
+            </div>
+        </div>
+
+        <div class="month-scroll">
+            <div class="month-table" id="monthTable"></div>
+        </div>
+
+        <p class="unit-note">
+            Đơn vị: °C - Nhiệt độ trung bình. Nhiệt độ trên 38°C hiển thị màu đỏ.
+        </p>
+    </section>
+</div>
+
+<script>
+    const warningTemp = 38;
+
+    let labels = [];
+    let days = [];
+    let tempData = [];
+    let monthValues = [];
+
+    let isRealtimeLoading = false;
+    let lastTemp = null;
+    let lastHum = null;
+
+    function isHot(value) {
+        return value > warningTemp;
+    }
+
+    function setText(id, value) {
+        const el = document.getElementById(id);
+
+        if (el && el.textContent !== value) {
+            el.textContent = value;
+        }
+    }
+
+    function setCurrentMonthLabel(monthLabel) {
+        const el = document.getElementById("currentMonthLabel");
+
+        if (el) {
+            el.innerHTML = `<i class="fa-regular fa-calendar-days"></i> Tháng ${monthLabel}`;
+        }
+    }
+
+        async function loadRealtimeData() {
+        if (isRealtimeLoading) return;
+
+        isRealtimeLoading = true;
+
+        try {
+            const response = await fetch('/GetData', {
+                method: 'GET',
+                cache: 'no-store'
+            });
+
+            const data = await response.json();
+
+            if (!data || data.success !== true) {
+                return;
+            }
+
+            const temp = parseFloat(data.nhietDo);
+            const hum = parseFloat(data.doAm);
+
+            if (isNaN(temp) || isNaN(hum)) {
+                return;
+            }
+
+            // Nhiệt độ: 1 số lẻ
+            const tempText = temp.toFixed(1);
+
+            // Độ ẩm: giữ nguyên giá trị nhận được
+            const humText = hum.toString();
+
+            if (lastTemp !== tempText) {
+                setText("currentTemp", tempText);
+                lastTemp = tempText;
+            }
+
+            if (lastHum !== humText) {
+                setText("currentHum", humText);
+                lastHum = humText;
+            }
+
+            document
+                .getElementById("currentMetric")
+                ?.classList.toggle("danger", temp > warningTemp);
+
+            const now = new Date();
+
+            const currentTime =
+                now.toLocaleDateString("vi-VN") +
+                " " +
+                now.toLocaleTimeString("vi-VN");
+
+            setText("updateTime", currentTime);
+
+            if (data.dailyLogSaved === true) {
+                await loadTodaySavedMetric();
+                await loadLast7DaysTemperature();
+                await loadCurrentMonthTemperature();
+            }
+        }
+        catch (error) {
+            console.error(error);
+        }
+        finally {
+            isRealtimeLoading = false;
+        }
+    }
+
+    async function loadTodaySavedMetric() {
+        try {
+            const response = await fetch('/GetLatestDailyLog', {
+                method: 'GET',
+                cache: 'no-store'
+            });
+
+            const result = await response.json();
+
+            if (!result || result.success !== true || !result.data) {
+                setText("todayTemp", "--");
+                setText("todayHum", "--");
+                setText("todayUpdateTime", "--");
+                return;
+            }
+
+            const temp = Number(result.data.nhietDo ?? 0);
+            const hum = Number(result.data.doAm ?? 0);
+
+            setText("todayTemp", temp.toFixed(1));
+            setText("todayHum", hum.toFixed(0));
+            setText("todayUpdateTime", result.data.updateTime ?? "--");
+
+            document
+                .getElementById("todayMetric")
+                ?.classList.toggle("danger", temp > warningTemp);
+        }
+        catch (error) {
+            console.error(error);
+        }
+    }
+
+    async function loadLast7DaysTemperature() {
+        try {
+            const response = await fetch('/GetLast7DaysTemperature', {
+                method: 'GET',
+                cache: 'no-store'
+            });
+
+            const result = await response.json();
+
+            labels = [];
+            days = [];
+            tempData = [];
+
+            if (!result || result.success !== true || !Array.isArray(result.data)) {
+                for (let i = 0; i < 7; i++) {
+                    labels.push("--");
+                    days.push("--");
+                    tempData.push(0);
+                }
+
+                renderDayCards();
+                drawChart();
+                return;
+            }
+
+            result.data.forEach(item => {
+                labels.push(item.date ?? "--");
+                days.push(item.dayName ?? "--");
+                tempData.push(Number(item.value ?? 0));
+            });
+
+            while (labels.length < 7) {
+                labels.push("--");
+                days.push("--");
+                tempData.push(0);
+            }
+
+            renderDayCards();
+            drawChart();
+        }
+        catch {
+            labels = [];
+            days = [];
+            tempData = [];
+
+            for (let i = 0; i < 7; i++) {
+                labels.push("--");
+                days.push("--");
+                tempData.push(0);
+            }
+
+            renderDayCards();
+            drawChart();
+        }
+    }
+
+    async function loadCurrentMonthTemperature() {
+        try {
+            const response = await fetch('/GetCurrentMonthTemperature', {
+                method: 'GET',
+                cache: 'no-store'
+            });
+
+            const result = await response.json();
+
+            monthValues = [];
+
+            if (!result || result.success !== true || !Array.isArray(result.data)) {
+                setCurrentMonthLabel("--");
+                renderMonth();
+                return;
+            }
+
+            setCurrentMonthLabel(result.monthLabel ?? "--");
+
+            result.data.forEach(item => {
+                monthValues.push({
+                    day: Number(item.day ?? 0),
+                    date: item.date ?? "--",
+                    value: Number(item.value ?? 0)
+                });
+            });
+
+            renderMonth();
+        }
+        catch {
+            monthValues = [];
+            setCurrentMonthLabel("--");
+            renderMonth();
+        }
+    }
+
+    function renderDayCards() {
+        const tempDays = document.getElementById("tempDays");
+
+        if (!tempDays) return;
+
+        tempDays.innerHTML = "";
+
+        for (let index = 0; index < 7; index++) {
+            const value = Number(tempData[index] ?? 0);
+            const hot = isHot(value);
+
+            tempDays.innerHTML += `
+                <div class="day-card ${hot ? "hot" : "normal"}">
+                    <strong>${days[index] ?? "--"}</strong>
+                    <small>${labels[index] ?? "--"}</small>
+                    <b>${value.toFixed(1)}°C</b>
+                </div>
+            `;
+        }
+    }
+
+    function renderMonth() {
+        const now = new Date();
+        const today = now.getDate();
+
+        const monthTable = document.getElementById("monthTable");
+
+        if (!monthTable) return;
+
+        monthTable.innerHTML = "";
+
+        if (!monthValues || monthValues.length === 0) {
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            const totalDays = new Date(year, month + 1, 0).getDate();
+
+            for (let i = 1; i <= totalDays; i++) {
+                const dayText = String(i).padStart(2, "0");
+                const monthText = String(month + 1).padStart(2, "0");
+
+                monthTable.innerHTML += `
+                    <div class="month-cell ${i === today ? "today" : ""}">
+                        <strong>${dayText}</strong>
+                        <small>${dayText}/${monthText}</small>
+                        <b>0.0°C</b>
+                    </div>
+                `;
+            }
+
+            return;
+        }
+
+        monthValues.forEach(item => {
+            const value = Number(item.value ?? 0);
+            const hot = isHot(value);
+
+            const dayText = String(item.day).padStart(2, "0");
+
+            monthTable.innerHTML += `
+                <div class="month-cell ${item.day === today ? "today" : ""} ${hot ? "hot" : ""}">
+                    <strong>${dayText}</strong>
+                    <small>${item.date}</small>
+                    <b>${value.toFixed(1)}°C</b>
+                </div>
+            `;
+        });
+    }
+
+    function drawChart() {
+        const canvas = document.getElementById("tempChart");
+
+        if (!canvas) return;
+
+        const context = canvas.getContext("2d");
+
+        if (window.tempLineChart) {
+            window.tempLineChart.destroy();
+        }
+
+        const gradient = context.createLinearGradient(0, 0, 0, 260);
+        gradient.addColorStop(0, "rgba(15,159,89,.30)");
+        gradient.addColorStop(1, "rgba(15,159,89,0)");
+
+        window.tempLineChart = new Chart(canvas, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: "Nhiệt độ trung bình (°C)",
+                        data: tempData,
+                        borderColor: "#0f9f59",
+                        backgroundColor: gradient,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.42,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: "#ffffff",
+                        pointBorderWidth: 3,
+                        pointBorderColor: tempData.map(x => x > warningTemp ? "#e11d1d" : "#0f9f59"),
+                        segment: {
+                            borderColor: ctx => {
+                                const y1 = ctx.p0.parsed.y;
+                                const y2 = ctx.p1.parsed.y;
+
+                                return y1 > warningTemp || y2 > warningTemp
+                                    ? "#e11d1d"
+                                    : "#0f9f59";
+                            }
+                        }
+                    },
+                    {
+                        label: "Ngưỡng 38°C",
+                        data: labels.map(() => warningTemp),
+                        borderColor: "#e11d1d",
+                        borderWidth: 2,
+                        borderDash: [8, 6],
+                        pointRadius: 0,
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                layout: {
+                    padding: {
+                        top: 20,
+                        right: 18,
+                        left: 4,
+                        bottom: 0
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: "bottom",
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 14,
+                            font: {
+                                size: 12,
+                                weight: "bold"
+                            },
+                            color: "#334155"
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: "#07142f",
+                        titleColor: "#ffffff",
+                        bodyColor: "#ffffff",
+                        padding: 12,
+                        cornerRadius: 10,
+                        displayColors: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            color: "#475569",
+                            font: {
+                                size: 12,
+                                weight: "bold"
+                            }
+                        }
+                    },
+                    y: {
+                        min: 0,
+                        max: 50,
+                        ticks: {
+                            stepSize: 10,
+                            color: "#475569",
+                            font: {
+                                size: 12,
+                                weight: "bold"
+                            },
+                            callback: value => value + "°C"
+                        },
+                        grid: {
+                            color: "#e2e8f0"
+                        }
+                    }
+                }
+            },
+            plugins: [{
+                id: "valueLabels",
+                afterDatasetsDraw(chart) {
+                    const { ctx } = chart;
+                    const meta = chart.getDatasetMeta(0);
+
+                    ctx.save();
+                    ctx.font = "bold 12px Arial";
+                    ctx.textAlign = "center";
+
+                    meta.data.forEach((point, index) => {
+                        const value = Number(tempData[index] ?? 0);
+
+                        ctx.fillStyle = value > warningTemp ? "#e11d1d" : "#0f9f59";
+                        ctx.fillText(value.toFixed(1) + "°C", point.x, point.y - 14);
+                    });
+
+                    ctx.restore();
+                }
+            }]
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        loadRealtimeData();
+        loadTodaySavedMetric();
+        loadLast7DaysTemperature();
+        loadCurrentMonthTemperature();
+
+        setInterval(loadRealtimeData, 1000);
+        setInterval(loadTodaySavedMetric, 60000);
+        setInterval(loadLast7DaysTemperature, 60000);
+        setInterval(loadCurrentMonthTemperature, 60000);
+    });
+</script>

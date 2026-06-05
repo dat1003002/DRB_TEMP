@@ -1,0 +1,18 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+
+# Build folders
+bin/
+obj/
+
+# Node.js
+node_modules/
+
+# Logs
+*.log
+
+# Config files
+appsettings.Development.json

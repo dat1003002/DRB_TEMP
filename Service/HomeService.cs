@@ -1,0 +1,128 @@
+﻿using DRB_TEMP.Models;
+using DRB_TEMP.Reponsitory;
+
+namespace DRB_TEMP.Service
+{
+    public class HomeService : IHomeService
+    {
+        private readonly IHomeReponsitory _homeReponsitory;
+
+        public HomeService(IHomeReponsitory homeReponsitory)
+        {
+            _homeReponsitory = homeReponsitory;
+        }
+
+        public async Task<bool> SaveDailyLogAt13hAsync(double? nhietDo, double? doAm)
+        {
+            var now = DateTime.Now;
+
+            if (now.TimeOfDay < new TimeSpan(13, 0, 0))
+                return false;
+
+            var today = now.Date;
+
+            var existed = await _homeReponsitory.HasLogTodayAsync(today);
+
+            if (existed)
+                return false;
+
+            var log = new TemperatureDailyLog
+            {
+                NhietDo = nhietDo,
+                DoAm = doAm,
+                LogDate = today,
+                CreatedAt = now
+            };
+
+            await _homeReponsitory.SaveDailyLogAsync(log);
+
+            return true;
+        }
+
+        public async Task<List<object>> GetLast7DaysTemperatureAsync()
+        {
+            var today = DateTime.Now.Date;
+            var fromDate = today.AddDays(-6);
+            var toDate = today;
+
+            var logs = await _homeReponsitory.GetLogsByDateRangeAsync(fromDate, toDate);
+
+            var result = new List<object>();
+
+            for (var date = fromDate; date <= toDate; date = date.AddDays(1))
+            {
+                var log = logs.FirstOrDefault(x => x.LogDate.Date == date.Date);
+
+                result.Add(new
+                {
+                    date = date.ToString("dd/MM"),
+                    dayName = GetVietnameseDayName(date),
+                    value = log?.NhietDo ?? 0
+                });
+            }
+
+            return result;
+        }
+
+        public async Task<List<object>> GetCurrentMonthTemperatureAsync()
+        {
+            var now = DateTime.Now;
+            var firstDay = new DateTime(now.Year, now.Month, 1);
+            var lastDay = firstDay.AddMonths(1).AddDays(-1);
+
+            var logs = await _homeReponsitory.GetLogsByDateRangeAsync(firstDay, lastDay);
+
+            var result = new List<object>();
+
+            for (var date = firstDay; date <= lastDay; date = date.AddDays(1))
+            {
+                var log = logs.FirstOrDefault(x => x.LogDate.Date == date.Date);
+
+                result.Add(new
+                {
+                    day = date.Day,
+                    date = date.ToString("dd/MM"),
+                    value = log?.NhietDo ?? 0
+                });
+            }
+
+            return result;
+        }
+
+        private static string GetVietnameseDayName(DateTime date)
+        {
+            return date.DayOfWeek switch
+            {
+                DayOfWeek.Monday => "Thứ 2",
+                DayOfWeek.Tuesday => "Thứ 3",
+                DayOfWeek.Wednesday => "Thứ 4",
+                DayOfWeek.Thursday => "Thứ 5",
+                DayOfWeek.Friday => "Thứ 6",
+                DayOfWeek.Saturday => "Thứ 7",
+                _ => "Chủ nhật"
+            };
+        }
+
+        public async Task<object?> GetLatestDailyLogAsync()
+        {
+            var log = await _homeReponsitory.GetLatestDailyLogAsync();
+
+            if (log == null)
+            {
+                return new
+                {
+                    nhietDo = 0,
+                    doAm = 0,
+                    updateTime = "--"
+                };
+            }
+
+            return new
+            {
+                nhietDo = log.NhietDo ?? 0,
+                doAm = log.DoAm ?? 0,
+                updateTime = log.CreatedAt.ToString("dd/MM/yyyy HH:mm:ss")
+            };
+        }
+    }
+}
