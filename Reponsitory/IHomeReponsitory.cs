@@ -11,5 +11,9 @@ namespace DRB_TEMP.Reponsitory
         Task<List<TemperatureDailyLog>> GetLogsByDateRangeAsync(DateTime fromDate, DateTime toDate);
 
         Task<TemperatureDailyLog?> GetLatestDailyLogAsync();
+
+        Task<TemperatureDailyLog?> GetTodayLogAsync(DateTime date);
+
+        Task UpdateDailyLogAsync(TemperatureDailyLog log);
     }
 }

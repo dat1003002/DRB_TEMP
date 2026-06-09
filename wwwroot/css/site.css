@@ -15,6 +15,7 @@
     --red: #e11d1d;
     --red-soft: #fff0f0;
     --orange: #ff6417;
+    --orange-soft: #fff0df;
     --shadow: 0 5px 14px rgba(15,35,70,.08)
 }
 
@@ -82,6 +83,7 @@ body {
         margin: 7px auto 0;
         border-radius: 999px
     }
+
 #fullscreenBtn {
     font-size: 23px;
     color: var(--orange);
@@ -94,6 +96,7 @@ body {
     #fullscreenBtn:hover {
         background: var(--orange-soft);
     }
+
 .temp-update {
     justify-self: end;
     display: flex;
@@ -477,8 +480,37 @@ body {
         width: 34px;
         height: 34px;
         padding: 0;
-        font-size: 24px
+        font-size: 24px;
+        cursor: pointer
     }
+
+    .month-actions .export-excel-btn {
+        width: auto;
+        min-width: 118px;
+        height: 34px;
+        padding: 0 12px;
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        color: var(--green);
+        transition: background .2s, border-color .2s, transform .15s;
+    }
+
+        .month-actions .export-excel-btn i {
+            font-size: 15px;
+            color: var(--green);
+        }
+
+        .month-actions .export-excel-btn:hover {
+            background: var(--green-soft);
+            border-color: #b9ead3;
+        }
+
+        .month-actions .export-excel-btn:active {
+            transform: translateY(1px);
+        }
 
 .day-list {
     display: grid;
@@ -621,6 +653,7 @@ body {
     color: #52657c;
     font-size: 12px
 }
+
 /* Responsive theo chiều cao */
 @media (max-height:820px) {
     .temp-page {
@@ -729,6 +762,7 @@ body {
         height: 220px
     }
 }
+
 /* Tablet */
 @media (max-width:1200px) {
     .temp-page {
@@ -772,6 +806,7 @@ body {
         margin-top: 10px
     }
 }
+
 /* Mobile */
 @media (max-width:800px) {
     .temp-page {
@@ -879,8 +914,14 @@ body {
 
     .month-actions {
         width: 100%;
-        justify-content: space-between
+        justify-content: space-between;
+        flex-wrap: wrap
     }
+
+        .month-actions .export-excel-btn {
+            order: -1;
+            min-width: 130px
+        }
 }
 
 @media (max-width:480px) {
@@ -924,4 +965,18 @@ body {
     .current-info p {
         font-size: 18px
     }
+
+    .month-actions {
+        justify-content: flex-start
+    }
+
+        .month-actions .export-excel-btn {
+            width: 100%;
+            min-width: 100%;
+        }
+
+        .month-actions span {
+            flex: 1;
+            text-align: center
+        }
 }

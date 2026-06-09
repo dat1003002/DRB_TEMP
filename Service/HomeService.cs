@@ -12,31 +12,37 @@ namespace DRB_TEMP.Service
             _homeReponsitory = homeReponsitory;
         }
 
-        public async Task<bool> SaveDailyLogAt13hAsync(double? nhietDo, double? doAm)
+        public async Task<bool> SaveHighestTemperatureAsync(double? nhietDo, double? doAm)
         {
-            var now = DateTime.Now;
+            var today = DateTime.Today;
 
-            if (now.TimeOfDay < new TimeSpan(13, 0, 0))
-                return false;
+            var log = await _homeReponsitory.GetTodayLogAsync(today);
 
-            var today = now.Date;
-
-            var existed = await _homeReponsitory.HasLogTodayAsync(today);
-
-            if (existed)
-                return false;
-
-            var log = new TemperatureDailyLog
+            if (log == null)
             {
-                NhietDo = nhietDo,
-                DoAm = doAm,
-                LogDate = today,
-                CreatedAt = now
-            };
+                await _homeReponsitory.SaveDailyLogAsync(new TemperatureDailyLog
+                {
+                    NhietDo = nhietDo,
+                    DoAm = doAm,
+                    LogDate = today,
+                    CreatedAt = DateTime.Now
+                });
 
-            await _homeReponsitory.SaveDailyLogAsync(log);
+                return true;
+            }
 
-            return true;
+            if ((nhietDo ?? 0) > (log.NhietDo ?? 0))
+            {
+                log.NhietDo = nhietDo;
+                log.DoAm = doAm;
+                log.CreatedAt = DateTime.Now;
+
+                await _homeReponsitory.UpdateDailyLogAsync(log);
+
+                return true;
+            }
+
+            return false;
         }
 
         public async Task<List<object>> GetLast7DaysTemperatureAsync()
@@ -64,10 +70,15 @@ namespace DRB_TEMP.Service
             return result;
         }
 
-        public async Task<List<object>> GetCurrentMonthTemperatureAsync()
+        public async Task<List<object>> GetCurrentMonthTemperatureAsync(int year, int month)
         {
-            var now = DateTime.Now;
-            var firstDay = new DateTime(now.Year, now.Month, 1);
+            if (month < 1 || month > 12)
+            {
+                year = DateTime.Now.Year;
+                month = DateTime.Now.Month;
+            }
+
+            var firstDay = new DateTime(year, month, 1);
             var lastDay = firstDay.AddMonths(1).AddDays(-1);
 
             var logs = await _homeReponsitory.GetLogsByDateRangeAsync(firstDay, lastDay);
@@ -82,25 +93,25 @@ namespace DRB_TEMP.Service
                 {
                     day = date.Day,
                     date = date.ToString("dd/MM"),
-                    value = log?.NhietDo ?? 0
+                    value = log?.NhietDo
                 });
             }
 
             return result;
         }
 
-        private static string GetVietnameseDayName(DateTime date)
+        public async Task<List<TemperatureDailyLog>> GetMonthTemperatureLogsAsync(int year, int month)
         {
-            return date.DayOfWeek switch
+            if (month < 1 || month > 12)
             {
-                DayOfWeek.Monday => "Thứ 2",
-                DayOfWeek.Tuesday => "Thứ 3",
-                DayOfWeek.Wednesday => "Thứ 4",
-                DayOfWeek.Thursday => "Thứ 5",
-                DayOfWeek.Friday => "Thứ 6",
-                DayOfWeek.Saturday => "Thứ 7",
-                _ => "Chủ nhật"
-            };
+                year = DateTime.Now.Year;
+                month = DateTime.Now.Month;
+            }
+
+            var firstDay = new DateTime(year, month, 1);
+            var lastDay = firstDay.AddMonths(1).AddDays(-1);
+
+            return await _homeReponsitory.GetLogsByDateRangeAsync(firstDay, lastDay);
         }
 
         public async Task<object?> GetLatestDailyLogAsync()
@@ -122,6 +133,20 @@ namespace DRB_TEMP.Service
                 nhietDo = log.NhietDo ?? 0,
                 doAm = log.DoAm ?? 0,
                 updateTime = log.CreatedAt.ToString("dd/MM/yyyy HH:mm:ss")
+            };
+        }
+
+        private static string GetVietnameseDayName(DateTime date)
+        {
+            return date.DayOfWeek switch
+            {
+                DayOfWeek.Monday => "Thứ 2",
+                DayOfWeek.Tuesday => "Thứ 3",
+                DayOfWeek.Wednesday => "Thứ 4",
+                DayOfWeek.Thursday => "Thứ 5",
+                DayOfWeek.Friday => "Thứ 6",
+                DayOfWeek.Saturday => "Thứ 7",
+                _ => "Chủ nhật"
             };
         }
     }

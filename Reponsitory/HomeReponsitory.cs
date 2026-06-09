@@ -31,7 +31,8 @@ namespace DRB_TEMP.Reponsitory
         {
             return await _context.TemperatureDailyLogs
                 .AsNoTracking()
-                .Where(x => x.LogDate.Date >= fromDate.Date && x.LogDate.Date <= toDate.Date)
+                .Where(x => x.LogDate.Date >= fromDate.Date &&
+                            x.LogDate.Date <= toDate.Date)
                 .OrderBy(x => x.LogDate)
                 .ToListAsync();
         }
@@ -45,6 +46,18 @@ namespace DRB_TEMP.Reponsitory
                 .Where(x => x.LogDate.Date == today)
                 .OrderByDescending(x => x.CreatedAt)
                 .FirstOrDefaultAsync();
+        }
+
+        public async Task<TemperatureDailyLog?> GetTodayLogAsync(DateTime date)
+        {
+            return await _context.TemperatureDailyLogs
+                .FirstOrDefaultAsync(x => x.LogDate.Date == date.Date);
+        }
+
+        public async Task UpdateDailyLogAsync(TemperatureDailyLog log)
+        {
+            _context.TemperatureDailyLogs.Update(log);
+            await _context.SaveChangesAsync();
         }
     }
 }

@@ -61,7 +61,7 @@
                 <div class="summary-top">
                     <h3>
                         <i class="fa-regular fa-calendar-days"></i>
-                        NHIỆT ĐỘ HÔM NAY
+                        NHIỆT ĐỘ CAO NHẤT TRONG NGÀY
                     </h3>
 
                     <div class="summary-time">
@@ -139,11 +139,18 @@
             </h2>
 
             <div class="month-actions">
-                <button type="button">‹</button>
+                <button type="button" id="exportExcelBtn" class="export-excel-btn">
+                    <i class="fa-regular fa-file-excel"></i>
+                    Xuất Excel
+                </button>
+
+                <button type="button" id="prevMonthBtn">‹</button>
+
                 <span id="currentMonthLabel">
                     <i class="fa-regular fa-calendar-days"></i> --
                 </span>
-                <button type="button">›</button>
+
+                <button type="button" id="nextMonthBtn">›</button>
             </div>
         </div>
 
@@ -152,7 +159,7 @@
         </div>
 
         <p class="unit-note">
-            Đơn vị: °C - Nhiệt độ trung bình. Nhiệt độ trên 38°C hiển thị màu đỏ.
+            Đơn vị: °C - Nhiệt độ trung bình. Nhiệt độ từ 38.0°C trở lên hiển thị màu đỏ.
         </p>
     </section>
 </div>
@@ -169,8 +176,12 @@
     let lastTemp = null;
     let lastHum = null;
 
+    const currentDate = new Date();
+    let selectedYear = currentDate.getFullYear();
+    let selectedMonth = currentDate.getMonth();
+
     function isHot(value) {
-        return value > warningTemp;
+        return value >= warningTemp;
     }
 
     function setText(id, value) {
@@ -181,15 +192,40 @@
         }
     }
 
-    function setCurrentMonthLabel(monthLabel) {
+    function getTotalDaysInSelectedMonth() {
+        return new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    }
+
+    function formatSelectedMonthLabel() {
+        const monthText = String(selectedMonth + 1).padStart(2, "0");
+        return `${monthText}/${selectedYear}`;
+    }
+
+    function formatSelectedDate(day) {
+        const dayText = String(day).padStart(2, "0");
+        const monthText = String(selectedMonth + 1).padStart(2, "0");
+        return `${dayText}/${monthText}`;
+    }
+
+    function setCurrentMonthLabel() {
         const el = document.getElementById("currentMonthLabel");
 
         if (el) {
-            el.innerHTML = `<i class="fa-regular fa-calendar-days"></i> Tháng ${monthLabel}`;
+            el.innerHTML = `<i class="fa-regular fa-calendar-days"></i> Tháng ${formatSelectedMonthLabel()}`;
         }
     }
 
-        async function loadRealtimeData() {
+    function isSelectedDayFuture(day) {
+        const selectedDate = new Date(selectedYear, selectedMonth, day);
+        const today = new Date();
+
+        selectedDate.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+
+        return selectedDate > today;
+    }
+
+    async function loadRealtimeData() {
         if (isRealtimeLoading) return;
 
         isRealtimeLoading = true;
@@ -213,10 +249,7 @@
                 return;
             }
 
-            // Nhiệt độ: 1 số lẻ
             const tempText = temp.toFixed(1);
-
-            // Độ ẩm: giữ nguyên giá trị nhận được
             const humText = hum.toString();
 
             if (lastTemp !== tempText) {
@@ -231,7 +264,7 @@
 
             document
                 .getElementById("currentMetric")
-                ?.classList.toggle("danger", temp > warningTemp);
+                ?.classList.toggle("danger", temp >= warningTemp);
 
             const now = new Date();
 
@@ -245,7 +278,15 @@
             if (data.dailyLogSaved === true) {
                 await loadTodaySavedMetric();
                 await loadLast7DaysTemperature();
-                await loadCurrentMonthTemperature();
+
+                const today = new Date();
+                const isViewingCurrentMonth =
+                    selectedYear === today.getFullYear() &&
+                    selectedMonth === today.getMonth();
+
+                if (isViewingCurrentMonth) {
+                    await loadCurrentMonthTemperature();
+                }
             }
         }
         catch (error) {
@@ -276,12 +317,12 @@
             const hum = Number(result.data.doAm ?? 0);
 
             setText("todayTemp", temp.toFixed(1));
-            setText("todayHum", hum.toFixed(0));
+            setText("todayHum", hum.toFixed(1));
             setText("todayUpdateTime", result.data.updateTime ?? "--");
 
             document
                 .getElementById("todayMetric")
-                ?.classList.toggle("danger", temp > warningTemp);
+                ?.classList.toggle("danger", temp >= warningTemp);
         }
         catch (error) {
             console.error(error);
@@ -346,7 +387,11 @@
 
     async function loadCurrentMonthTemperature() {
         try {
-            const response = await fetch('/GetCurrentMonthTemperature', {
+            setCurrentMonthLabel();
+
+            const monthQuery = selectedMonth + 1;
+
+            const response = await fetch(`/GetCurrentMonthTemperature?year=${selectedYear}&month=${monthQuery}`, {
                 method: 'GET',
                 cache: 'no-store'
             });
@@ -355,27 +400,44 @@
 
             monthValues = [];
 
-            if (!result || result.success !== true || !Array.isArray(result.data)) {
-                setCurrentMonthLabel("--");
-                renderMonth();
-                return;
+            const totalDays = getTotalDaysInSelectedMonth();
+            const dataMap = new Map();
+
+            if (result && result.success === true && Array.isArray(result.data)) {
+                result.data.forEach(item => {
+                    const day = Number(item.day ?? 0);
+
+                    if (day > 0) {
+                        dataMap.set(day, item);
+                    }
+                });
             }
 
-            setCurrentMonthLabel(result.monthLabel ?? "--");
+            for (let day = 1; day <= totalDays; day++) {
+                const item = dataMap.get(day);
+                const rawValue = item ? item.value : null;
+                const isFutureDay = isSelectedDayFuture(day);
 
-            result.data.forEach(item => {
+                const hasValue =
+                    !isFutureDay &&
+                    rawValue !== null &&
+                    rawValue !== undefined &&
+                    rawValue !== "" &&
+                    !isNaN(Number(rawValue));
+
                 monthValues.push({
-                    day: Number(item.day ?? 0),
-                    date: item.date ?? "--",
-                    value: Number(item.value ?? 0)
+                    day: day,
+                    date: item?.date ?? formatSelectedDate(day),
+                    value: hasValue ? Number(rawValue) : null
                 });
-            });
+            }
 
             renderMonth();
         }
-        catch {
+        catch (error) {
+            console.error(error);
             monthValues = [];
-            setCurrentMonthLabel("--");
+            setCurrentMonthLabel();
             renderMonth();
         }
     }
@@ -392,19 +454,16 @@
             const hot = isHot(value);
 
             tempDays.innerHTML += `
-                <div class="day-card ${hot ? "hot" : "normal"}">
-                    <strong>${days[index] ?? "--"}</strong>
-                    <small>${labels[index] ?? "--"}</small>
-                    <b>${value.toFixed(1)}°C</b>
-                </div>
-            `;
+                        <div class="day-card ${hot ? "hot" : "normal"}">
+                            <strong>${days[index] ?? "--"}</strong>
+                            <small>${labels[index] ?? "--"}</small>
+                            <b>${value.toFixed(1)}°C</b>
+                        </div>
+                    `;
         }
     }
 
     function renderMonth() {
-        const now = new Date();
-        const today = now.getDate();
-
         const monthTable = document.getElementById("monthTable");
 
         if (!monthTable) return;
@@ -412,39 +471,45 @@
         monthTable.innerHTML = "";
 
         if (!monthValues || monthValues.length === 0) {
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            const totalDays = new Date(year, month + 1, 0).getDate();
+            const totalDays = getTotalDaysInSelectedMonth();
 
             for (let i = 1; i <= totalDays; i++) {
-                const dayText = String(i).padStart(2, "0");
-                const monthText = String(month + 1).padStart(2, "0");
-
                 monthTable.innerHTML += `
-                    <div class="month-cell ${i === today ? "today" : ""}">
-                        <strong>${dayText}</strong>
-                        <small>${dayText}/${monthText}</small>
-                        <b>0.0°C</b>
-                    </div>
-                `;
+                            <div class="month-cell">
+                                <strong>${String(i).padStart(2, "0")}</strong>
+                                <small>${formatSelectedDate(i)}</small>
+                                <b>--</b>
+                            </div>
+                        `;
             }
 
             return;
         }
 
+        const today = new Date();
+        const isCurrentMonth =
+            selectedYear === today.getFullYear() &&
+            selectedMonth === today.getMonth();
+
         monthValues.forEach(item => {
-            const value = Number(item.value ?? 0);
-            const hot = isHot(value);
+            const value = item.value;
+            const hasValue = value !== null && value !== undefined && !isNaN(value);
+            const hot = hasValue && isHot(value);
+
+            const isToday =
+                isCurrentMonth &&
+                item.day === today.getDate();
 
             const dayText = String(item.day).padStart(2, "0");
+            const valueText = hasValue ? value.toFixed(1) + "°C" : "--";
 
             monthTable.innerHTML += `
-                <div class="month-cell ${item.day === today ? "today" : ""} ${hot ? "hot" : ""}">
-                    <strong>${dayText}</strong>
-                    <small>${item.date}</small>
-                    <b>${value.toFixed(1)}°C</b>
-                </div>
-            `;
+                        <div class="month-cell ${isToday ? "today" : ""} ${hot ? "hot" : ""}">
+                            <strong>${dayText}</strong>
+                            <small>${item.date}</small>
+                            <b>${valueText}</b>
+                        </div>
+                    `;
         });
     }
 
@@ -480,13 +545,13 @@
                         pointHoverRadius: 7,
                         pointBackgroundColor: "#ffffff",
                         pointBorderWidth: 3,
-                        pointBorderColor: tempData.map(x => x > warningTemp ? "#e11d1d" : "#0f9f59"),
+                        pointBorderColor: tempData.map(x => x >= warningTemp ? "#e11d1d" : "#0f9f59"),
                         segment: {
                             borderColor: ctx => {
                                 const y1 = ctx.p0.parsed.y;
                                 const y2 = ctx.p1.parsed.y;
 
-                                return y1 > warningTemp || y2 > warningTemp
+                                return y1 >= warningTemp || y2 >= warningTemp
                                     ? "#e11d1d"
                                     : "#0f9f59";
                             }
@@ -582,7 +647,7 @@
                     meta.data.forEach((point, index) => {
                         const value = Number(tempData[index] ?? 0);
 
-                        ctx.fillStyle = value > warningTemp ? "#e11d1d" : "#0f9f59";
+                        ctx.fillStyle = value >= warningTemp ? "#e11d1d" : "#0f9f59";
                         ctx.fillText(value.toFixed(1) + "°C", point.x, point.y - 14);
                     });
 
@@ -591,23 +656,64 @@
             }]
         });
     }
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
 
-    fullscreenBtn.addEventListener('click', () => {
-        const elem = document.documentElement;
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
 
-        if (!document.fullscreenElement) {
-            elem.requestFullscreen().then(() => {
-                fullscreenBtn.classList.replace('fa-expand', 'fa-compress');
-            }).catch(err => {
-                console.error(`Không thể bật full screen: ${err.message}`);
-            });
-        } else {
-            document.exitFullscreen().then(() => {
-                fullscreenBtn.classList.replace('fa-compress', 'fa-expand');
-            });
-        }
-    });
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', () => {
+            const elem = document.documentElement;
+
+            if (!document.fullscreenElement) {
+                elem.requestFullscreen().then(() => {
+                    fullscreenBtn.classList.replace('fa-expand', 'fa-compress');
+                }).catch(err => {
+                    console.error(`Không thể bật full screen: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen().then(() => {
+                    fullscreenBtn.classList.replace('fa-compress', 'fa-expand');
+                });
+            }
+        });
+    }
+
+    const exportExcelBtn = document.getElementById("exportExcelBtn");
+    const prevMonthBtn = document.getElementById("prevMonthBtn");
+    const nextMonthBtn = document.getElementById("nextMonthBtn");
+
+    if (exportExcelBtn) {
+        exportExcelBtn.addEventListener("click", function () {
+            const monthQuery = selectedMonth + 1;
+
+            window.location.href = `/ExportMonthTemperatureToExcel?year=${selectedYear}&month=${monthQuery}`;
+        });
+    }
+
+    if (prevMonthBtn) {
+        prevMonthBtn.addEventListener("click", async function () {
+            selectedMonth--;
+
+            if (selectedMonth < 0) {
+                selectedMonth = 11;
+                selectedYear--;
+            }
+
+            await loadCurrentMonthTemperature();
+        });
+    }
+
+    if (nextMonthBtn) {
+        nextMonthBtn.addEventListener("click", async function () {
+            selectedMonth++;
+
+            if (selectedMonth > 11) {
+                selectedMonth = 0;
+                selectedYear++;
+            }
+
+            await loadCurrentMonthTemperature();
+        });
+    }
 
     document.addEventListener("DOMContentLoaded", function () {
         loadRealtimeData();
