@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Globalization;
 using ClosedXML.Excel;
 using DRB_TEMP.Models;
 using DRB_TEMP.Service;
@@ -10,16 +9,16 @@ namespace DRB_TEMP.Controllers
     public class HomeController : Controller
     {
         private readonly ILogger<HomeController> _logger;
-        private readonly KepwareService _kepwareService;
+        private readonly TemperatureCache _temperatureCache;
         private readonly IHomeService _homeService;
 
         public HomeController(
             ILogger<HomeController> logger,
-            KepwareService kepwareService,
+            TemperatureCache temperatureCache,
             IHomeService homeService)
         {
             _logger = logger;
-            _kepwareService = kepwareService;
+            _temperatureCache = temperatureCache;
             _homeService = homeService;
         }
 
@@ -29,55 +28,30 @@ namespace DRB_TEMP.Controllers
         }
 
         [HttpGet("/GetData")]
-        public async Task<IActionResult> GetData()
+        public IActionResult GetData()
         {
-            try
+            var (nhietDo, doAm, updatedAt) = _temperatureCache.Get();
+
+            if (nhietDo == null)
             {
-                var tempNodeId = "ns=2;s=CTL.Nhiet Do Xuong.Nhiet Do";
-                var humNodeId = "ns=2;s=CTL.Nhiet Do Xuong.Do Am";
-
-                var tags = new List<string>
-                {
-                    tempNodeId,
-                    humNodeId
-                };
-
-                var data = await _kepwareService.ReadMultipleTagsAsync(tags);
-
-                data.TryGetValue(tempNodeId, out var tempValue);
-                data.TryGetValue(humNodeId, out var humValue);
-
-                var tempText = tempValue?.ToString() ?? "";
-                var humText = humValue?.ToString() ?? "";
-
-                var nhietDo = ConvertToDouble(tempText);
-                var doAm = ConvertToDouble(humText);
-
-                var dailyLogSaved = await _homeService.SaveHighestTemperatureAsync(nhietDo, doAm);
-
-                return Json(new
-                {
-                    success = true,
-                    nhietDo = tempText,
-                    doAm = humText,
-                    time = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"),
-                    dailyLogSaved
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi đọc dữ liệu từ Kepware");
-
                 return Json(new
                 {
                     success = false,
                     nhietDo = "",
                     doAm = "",
                     time = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"),
-                    dailyLogSaved = false,
-                    error = ex.Message
+                    dailyLogSaved = false
                 });
             }
+
+            return Json(new
+            {
+                success = true,
+                nhietDo = nhietDo.Value.ToString("F1", System.Globalization.CultureInfo.InvariantCulture),
+                doAm = doAm?.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) ?? "",
+                time = updatedAt.ToString("dd/MM/yyyy HH:mm:ss"),
+                dailyLogSaved = _temperatureCache.ConsumeDailyLogUpdated()
+            });
         }
 
         [HttpGet("/GetLast7DaysTemperature")]
@@ -285,6 +259,41 @@ namespace DRB_TEMP.Controllers
             }
         }
 
+        [HttpGet("/GetTodayIntradayTemperature")]
+        public async Task<IActionResult> GetTodayIntradayTemperature()
+        {
+            try
+            {
+                var data = await _homeService.GetTodayIntradayTemperatureAsync();
+
+                var peak = data
+                    .Cast<dynamic>()
+                    .OrderByDescending(x => (double)x.nhietDo)
+                    .FirstOrDefault();
+
+                return Json(new
+                {
+                    success = true,
+                    data,
+                    peakTime = peak != null ? (string)peak.time : "--",
+                    peakValue = peak != null ? (double)peak.nhietDo : 0
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi lấy dữ liệu nhiệt độ trong ngày");
+
+                return Json(new
+                {
+                    success = false,
+                    data = new List<object>(),
+                    peakTime = "--",
+                    peakValue = 0,
+                    error = ex.Message
+                });
+            }
+        }
+
         [HttpGet("/GetLatestDailyLog")]
         public async Task<IActionResult> GetLatestDailyLog()
         {
@@ -309,25 +318,6 @@ namespace DRB_TEMP.Controllers
                     error = ex.Message
                 });
             }
-        }
-
-        private static double? ConvertToDouble(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-                return null;
-
-            value = value.Replace(",", ".");
-
-            if (double.TryParse(
-                    value,
-                    NumberStyles.Any,
-                    CultureInfo.InvariantCulture,
-                    out var result))
-            {
-                return result;
-            }
-
-            return null;
         }
 
         public IActionResult Privacy()

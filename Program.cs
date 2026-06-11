@@ -12,11 +12,20 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
         builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddSingleton<KepwareService>();
+builder.Services.AddSingleton<TemperatureCache>();
 
 builder.Services.AddScoped<IHomeReponsitory, HomeReponsitory>();
 builder.Services.AddScoped<IHomeService, HomeService>();
+builder.Services.AddHostedService<MidnightCleanupService>();
+builder.Services.AddHostedService<TemperaturePollingService>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 if (!app.Environment.IsDevelopment())
 {

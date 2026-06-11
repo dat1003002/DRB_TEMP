@@ -11,5 +11,7 @@ namespace DRB_TEMP.Data
         }
 
         public DbSet<TemperatureDailyLog> TemperatureDailyLogs { get; set; }
+
+        public DbSet<TemperatureIntradayLog> TemperatureIntradayLogs { get; set; }
     }
 }

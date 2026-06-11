@@ -115,13 +115,13 @@
                 <div class="panel-head">
                     <h2>
                         <i class="fa-solid fa-chart-line"></i>
-                        KẾT QUẢ NHIỆT ĐỘ 7 NGÀY QUA
+                        BIẾN ĐỘNG NHIỆT ĐỘ TRONG NGÀY
                     </h2>
 
-                    <button type="button">
-                        <i class="fa-regular fa-calendar-days"></i>
-                        7 ngày qua
-                    </button>
+                    <div class="intraday-peak" id="intradayPeak">
+                        <i class="fa-solid fa-fire"></i>
+                        Cao nhất: <strong id="peakValue">--</strong>°C lúc <strong id="peakTime">--</strong>
+                    </div>
                 </div>
 
                 <div class="chart-box">
@@ -171,6 +171,9 @@
     let days = [];
     let tempData = [];
     let monthValues = [];
+
+    let intradayTimes = [];
+    let intradayTemps = [];
 
     let isRealtimeLoading = false;
     let lastTemp = null;
@@ -274,6 +277,8 @@
                 now.toLocaleTimeString("vi-VN");
 
             setText("updateTime", currentTime);
+
+            await loadIntradayTemperature();
 
             if (data.dailyLogSaved === true) {
                 await loadTodaySavedMetric();
@@ -385,6 +390,162 @@
         }
     }
 
+    async function loadIntradayTemperature() {
+        try {
+            const response = await fetch('/GetTodayIntradayTemperature', {
+                method: 'GET',
+                cache: 'no-store'
+            });
+
+            const result = await response.json();
+
+            intradayTimes = [];
+            intradayTemps = [];
+
+            if (result && result.success === true && Array.isArray(result.data)) {
+                result.data.forEach(item => {
+                    const val = Number(item.nhietDo ?? 0);
+                    intradayTimes.push(item.time ?? "--");
+                    intradayTemps.push(val > 0 ? val : null);
+                });
+            }
+
+            const peakVal = result?.peakValue ?? 0;
+            const peakTime = result?.peakTime ?? "--";
+
+            const peakEl = document.getElementById("intradayPeak");
+            if (peakEl) {
+                peakEl.classList.toggle("danger", peakVal >= warningTemp);
+            }
+
+            document.getElementById("peakValue") && (document.getElementById("peakValue").textContent = peakVal > 0 ? peakVal.toFixed(1) : "--");
+            document.getElementById("peakTime") && (document.getElementById("peakTime").textContent = peakTime);
+
+            if (intradayTemps.length === 0) return;
+
+            if (!window.tempLineChart) {
+                drawIntradayChart();
+            } else {
+                window.tempLineChart.data.labels = intradayTimes;
+                window.tempLineChart.data.datasets[0].data = intradayTemps;
+                window.tempLineChart.data.datasets[1].data = intradayTimes.map(() => warningTemp);
+                window.tempLineChart.update("none");
+            }
+        }
+        catch (error) {
+            console.error(error);
+        }
+    }
+
+    function drawIntradayChart() {
+        const canvas = document.getElementById("tempChart");
+
+        if (!canvas) return;
+
+        if (window.tempLineChart) {
+            window.tempLineChart.destroy();
+        }
+
+        const ctx = canvas.getContext("2d");
+
+        const pointColors = intradayTemps.map(v =>
+            v >= warningTemp ? "#e11d1d" : "#0f9f59"
+        );
+
+        window.tempLineChart = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: intradayTimes,
+                datasets: [
+                    {
+                        label: "Nhiệt độ (°C)",
+                        data: intradayTemps,
+                        borderColor: "#3b82f6",
+                        backgroundColor: "transparent",
+                        borderWidth: 1.5,
+                        fill: false,
+                        tension: 0,
+                        spanGaps: false,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        segment: {
+                            borderColor: ctx => {
+                                const y1 = ctx.p0.parsed.y;
+                                const y2 = ctx.p1.parsed.y;
+                                return (y1 >= warningTemp || y2 >= warningTemp) ? "#e11d1d" : "#3b82f6";
+                            }
+                        }
+                    },
+                    {
+                        label: "Ngưỡng " + warningTemp + "°C",
+                        data: intradayTimes.map(() => warningTemp),
+                        borderColor: "#e11d1d",
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        fill: false,
+                        animation: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: {
+                    mode: "index",
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        position: "bottom",
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 14,
+                            font: { size: 12, weight: "bold" },
+                            color: "#334155"
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: "#07142f",
+                        titleColor: "#ffffff",
+                        bodyColor: "#ffffff",
+                        padding: 10,
+                        cornerRadius: 8,
+                        displayColors: true,
+                        filter: item => item.datasetIndex === 0,
+                        callbacks: {
+                            label: item => Number(item.raw).toFixed(1) + "°C"
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: "#f1f5f9" },
+                        ticks: {
+                            color: "#475569",
+                            font: { size: 10 },
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 10
+                        }
+                    },
+                    y: {
+                        min: 0,
+                        max: 50,
+                        ticks: {
+                            stepSize: 10,
+                            color: "#475569",
+                            font: { size: 11 },
+                            callback: v => v + "°C"
+                        },
+                        grid: { color: "#e2e8f0" }
+                    }
+                }
+            }
+        });
+    }
+
     async function loadCurrentMonthTemperature() {
         try {
             setCurrentMonthLabel();
@@ -447,20 +608,20 @@
 
         if (!tempDays) return;
 
-        tempDays.innerHTML = "";
+        let html = "";
 
         for (let index = 0; index < 7; index++) {
             const value = Number(tempData[index] ?? 0);
             const hot = isHot(value);
 
-            tempDays.innerHTML += `
-                        <div class="day-card ${hot ? "hot" : "normal"}">
-                            <strong>${days[index] ?? "--"}</strong>
-                            <small>${labels[index] ?? "--"}</small>
-                            <b>${value.toFixed(1)}°C</b>
-                        </div>
-                    `;
+            html += `<div class="day-card ${hot ? "hot" : "normal"}">
+                        <strong>${days[index] ?? "--"}</strong>
+                        <small>${labels[index] ?? "--"}</small>
+                        <b>${value.toFixed(1)}°C</b>
+                    </div>`;
         }
+
+        tempDays.innerHTML = html;
     }
 
     function renderMonth() {
@@ -468,21 +629,20 @@
 
         if (!monthTable) return;
 
-        monthTable.innerHTML = "";
+        let html = "";
 
         if (!monthValues || monthValues.length === 0) {
             const totalDays = getTotalDaysInSelectedMonth();
 
             for (let i = 1; i <= totalDays; i++) {
-                monthTable.innerHTML += `
-                            <div class="month-cell">
-                                <strong>${String(i).padStart(2, "0")}</strong>
-                                <small>${formatSelectedDate(i)}</small>
-                                <b>--</b>
-                            </div>
-                        `;
+                html += `<div class="month-cell">
+                            <strong>${String(i).padStart(2, "0")}</strong>
+                            <small>${formatSelectedDate(i)}</small>
+                            <b>--</b>
+                        </div>`;
             }
 
+            monthTable.innerHTML = html;
             return;
         }
 
@@ -495,166 +655,22 @@
             const value = item.value;
             const hasValue = value !== null && value !== undefined && !isNaN(value);
             const hot = hasValue && isHot(value);
-
-            const isToday =
-                isCurrentMonth &&
-                item.day === today.getDate();
-
+            const isToday = isCurrentMonth && item.day === today.getDate();
             const dayText = String(item.day).padStart(2, "0");
             const valueText = hasValue ? value.toFixed(1) + "°C" : "--";
 
-            monthTable.innerHTML += `
-                        <div class="month-cell ${isToday ? "today" : ""} ${hot ? "hot" : ""}">
-                            <strong>${dayText}</strong>
-                            <small>${item.date}</small>
-                            <b>${valueText}</b>
-                        </div>
-                    `;
+            html += `<div class="month-cell ${isToday ? "today" : ""} ${hot ? "hot" : ""}">
+                        <strong>${dayText}</strong>
+                        <small>${item.date}</small>
+                        <b>${valueText}</b>
+                    </div>`;
         });
+
+        monthTable.innerHTML = html;
     }
 
     function drawChart() {
-        const canvas = document.getElementById("tempChart");
-
-        if (!canvas) return;
-
-        const context = canvas.getContext("2d");
-
-        if (window.tempLineChart) {
-            window.tempLineChart.destroy();
-        }
-
-        const gradient = context.createLinearGradient(0, 0, 0, 260);
-        gradient.addColorStop(0, "rgba(15,159,89,.30)");
-        gradient.addColorStop(1, "rgba(15,159,89,0)");
-
-        window.tempLineChart = new Chart(canvas, {
-            type: "line",
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: "Nhiệt độ trung bình (°C)",
-                        data: tempData,
-                        borderColor: "#0f9f59",
-                        backgroundColor: gradient,
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.42,
-                        pointRadius: 5,
-                        pointHoverRadius: 7,
-                        pointBackgroundColor: "#ffffff",
-                        pointBorderWidth: 3,
-                        pointBorderColor: tempData.map(x => x >= warningTemp ? "#e11d1d" : "#0f9f59"),
-                        segment: {
-                            borderColor: ctx => {
-                                const y1 = ctx.p0.parsed.y;
-                                const y2 = ctx.p1.parsed.y;
-
-                                return y1 >= warningTemp || y2 >= warningTemp
-                                    ? "#e11d1d"
-                                    : "#0f9f59";
-                            }
-                        }
-                    },
-                    {
-                        label: "Ngưỡng 38°C",
-                        data: labels.map(() => warningTemp),
-                        borderColor: "#e11d1d",
-                        borderWidth: 2,
-                        borderDash: [8, 6],
-                        pointRadius: 0,
-                        fill: false
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                layout: {
-                    padding: {
-                        top: 20,
-                        right: 18,
-                        left: 4,
-                        bottom: 0
-                    }
-                },
-                plugins: {
-                    legend: {
-                        position: "bottom",
-                        labels: {
-                            usePointStyle: true,
-                            boxWidth: 8,
-                            padding: 14,
-                            font: {
-                                size: 12,
-                                weight: "bold"
-                            },
-                            color: "#334155"
-                        }
-                    },
-                    tooltip: {
-                        backgroundColor: "#07142f",
-                        titleColor: "#ffffff",
-                        bodyColor: "#ffffff",
-                        padding: 12,
-                        cornerRadius: 10,
-                        displayColors: false
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: {
-                            display: false
-                        },
-                        ticks: {
-                            color: "#475569",
-                            font: {
-                                size: 12,
-                                weight: "bold"
-                            }
-                        }
-                    },
-                    y: {
-                        min: 0,
-                        max: 50,
-                        ticks: {
-                            stepSize: 10,
-                            color: "#475569",
-                            font: {
-                                size: 12,
-                                weight: "bold"
-                            },
-                            callback: value => value + "°C"
-                        },
-                        grid: {
-                            color: "#e2e8f0"
-                        }
-                    }
-                }
-            },
-            plugins: [{
-                id: "valueLabels",
-                afterDatasetsDraw(chart) {
-                    const { ctx } = chart;
-                    const meta = chart.getDatasetMeta(0);
-
-                    ctx.save();
-                    ctx.font = "bold 12px Arial";
-                    ctx.textAlign = "center";
-
-                    meta.data.forEach((point, index) => {
-                        const value = Number(tempData[index] ?? 0);
-
-                        ctx.fillStyle = value >= warningTemp ? "#e11d1d" : "#0f9f59";
-                        ctx.fillText(value.toFixed(1) + "°C", point.x, point.y - 14);
-                    });
-
-                    ctx.restore();
-                }
-            }]
-        });
+        // biểu đồ 7 ngày không còn dùng, giữ hàm rỗng để không lỗi call cũ
     }
 
     const fullscreenBtn = document.getElementById('fullscreenBtn');
@@ -720,10 +736,22 @@
         loadTodaySavedMetric();
         loadLast7DaysTemperature();
         loadCurrentMonthTemperature();
+        loadIntradayTemperature();
 
-        setInterval(loadRealtimeData, 1000);
-        setInterval(loadTodaySavedMetric, 60000);
-        setInterval(loadLast7DaysTemperature, 60000);
-        setInterval(loadCurrentMonthTemperature, 60000);
+        const intervals = [
+            setInterval(loadRealtimeData, 1000),
+            setInterval(loadTodaySavedMetric, 60000),
+            setInterval(loadLast7DaysTemperature, 60000),
+            setInterval(loadCurrentMonthTemperature, 60000)
+        ];
+
+        window.addEventListener("beforeunload", function () {
+            intervals.forEach(id => clearInterval(id));
+
+            if (window.tempLineChart) {
+                window.tempLineChart.destroy();
+                window.tempLineChart = null;
+            }
+        });
     });
 </script>

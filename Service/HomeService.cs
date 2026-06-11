@@ -14,24 +14,37 @@ namespace DRB_TEMP.Service
 
         public async Task<bool> SaveHighestTemperatureAsync(double? nhietDo, double? doAm)
         {
+            if (nhietDo == null) return false;
+
             var today = DateTime.Today;
 
             var log = await _homeReponsitory.GetTodayLogAsync(today);
 
             if (log == null)
             {
-                await _homeReponsitory.SaveDailyLogAsync(new TemperatureDailyLog
+                try
                 {
-                    NhietDo = nhietDo,
-                    DoAm = doAm,
-                    LogDate = today,
-                    CreatedAt = DateTime.Now
-                });
+                    await _homeReponsitory.SaveDailyLogAsync(new TemperatureDailyLog
+                    {
+                        NhietDo = nhietDo,
+                        DoAm = doAm,
+                        LogDate = today,
+                        CreatedAt = DateTime.Now
+                    });
 
-                return true;
+                    return true;
+                }
+                catch (Exception)
+                {
+                    // Bản ghi có thể đã được request đồng thời tạo trước,
+                    // đọc lại và thử update bên dưới
+                    log = await _homeReponsitory.GetTodayLogAsync(today);
+
+                    if (log == null) return false;
+                }
             }
 
-            if ((nhietDo ?? 0) > (log.NhietDo ?? 0))
+            if (nhietDo > (log.NhietDo ?? double.MinValue))
             {
                 log.NhietDo = nhietDo;
                 log.DoAm = doAm;
@@ -134,6 +147,35 @@ namespace DRB_TEMP.Service
                 doAm = log.DoAm ?? 0,
                 updateTime = log.CreatedAt.ToString("dd/MM/yyyy HH:mm:ss")
             };
+        }
+
+        public async Task SaveIntradayLogAsync(double? nhietDo, double? doAm)
+        {
+            if (nhietDo == null) return;
+
+            await _homeReponsitory.SaveIntradayLogAsync(new Models.TemperatureIntradayLog
+            {
+                NhietDo = nhietDo,
+                DoAm = doAm,
+                RecordedAt = DateTime.Now
+            });
+        }
+
+        public async Task<List<object>> GetTodayIntradayTemperatureAsync()
+        {
+            var logs = await _homeReponsitory.GetTodayIntradayLogsAsync();
+
+            return logs.Select(x => (object)new
+            {
+                time = x.RecordedAt.ToString("HH:mm:ss"),
+                nhietDo = x.NhietDo ?? 0,
+                doAm = x.DoAm ?? 0
+            }).ToList();
+        }
+
+        public async Task ClearIntradayLogsAsync()
+        {
+            await _homeReponsitory.ClearIntradayLogsAsync();
         }
 
         private static string GetVietnameseDayName(DateTime date)

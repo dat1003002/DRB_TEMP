@@ -13,5 +13,11 @@ namespace DRB_TEMP.Service
         Task<List<TemperatureDailyLog>> GetMonthTemperatureLogsAsync(int year, int month);
 
         Task<object?> GetLatestDailyLogAsync();
+
+        Task SaveIntradayLogAsync(double? nhietDo, double? doAm);
+
+        Task<List<object>> GetTodayIntradayTemperatureAsync();
+
+        Task ClearIntradayLogsAsync();
     }
 }

@@ -15,5 +15,11 @@ namespace DRB_TEMP.Reponsitory
         Task<TemperatureDailyLog?> GetTodayLogAsync(DateTime date);
 
         Task UpdateDailyLogAsync(TemperatureDailyLog log);
+
+        Task SaveIntradayLogAsync(TemperatureIntradayLog log);
+
+        Task<List<TemperatureIntradayLog>> GetTodayIntradayLogsAsync();
+
+        Task ClearIntradayLogsAsync();
     }
 }
